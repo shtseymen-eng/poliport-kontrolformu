@@ -1,0 +1,68 @@
+============================================================
+  GITHUB'A NASIL PUSH EDİLİR — ADIM ADIM
+============================================================
+
+────────────────────────────────────────
+ADIM 1 — Git kur (ilk seferinde)
+────────────────────────────────────────
+https://git-scm.com/download/win adresine git, indir ve kur.
+Kurulum sırasında her şeyi varsayılan bırak.
+
+
+────────────────────────────────────────
+ADIM 2 — GitHub'da repo oluştur
+────────────────────────────────────────
+1. https://github.com adresine gir, hesabına giriş yap
+2. Sağ üstteki "+" butonuna tıkla → "New repository"
+3. Repository name: poliport-kontrol-formu
+4. Private seç (kimse görmesin)
+5. "Add a README file" TIKLAMAAA (boş olsun)
+6. "Create repository" butonuna tıkla
+
+
+────────────────────────────────────────
+ADIM 3 — Token oluştur
+────────────────────────────────────────
+1. GitHub'da sağ üst köşe → profil fotoğrafı → Settings
+2. Sol menüde en alta in → "Developer settings"
+3. "Personal access tokens" → "Tokens (classic)"
+4. "Generate new token" → "Generate new token (classic)"
+5. Note: poliport
+6. Expiration: No expiration (ya da 1 year)
+7. Scope: sadece "repo" kutusunu işaretle ✓
+8. Sayfanın en altında "Generate token" butonuna bas
+9. Çıkan kodu KOPYALA (bir daha göremezsin!)
+   Örnek: ghp_aBcDeFgHiJkLmNoPqRsTuVwXyZ123456
+
+
+────────────────────────────────────────
+ADIM 4 — Push et
+────────────────────────────────────────
+Proje klasörünü aç (poliport_arsiv.py'nin olduğu yer)
+GITHUB_PUSH.bat dosyasına çift tıkla
+Token sor → kopyaladığın token'ı yapıştır → Enter
+
+Bitti! Kod şu adreste olacak:
+https://github.com/seymen/poliport-kontrol-formu
+
+
+────────────────────────────────────────
+ADIM 5 — Sonraki güncellemelerde
+────────────────────────────────────────
+Dosyaları değiştirdikten sonra tekrar
+GITHUB_PUSH.bat'a çift tıkla → token gir → Enter
+Her seferinde yeni commit olarak kaydeder.
+
+
+────────────────────────────────────────
+SORUN ÇIKARSA
+────────────────────────────────────────
+"Repository not found" hatası:
+  → ADIM 2'yi atladın, önce repo oluştur
+
+"Authentication failed" hatası:
+  → Token yanlış, tekrar kopyala
+
+"already up to date" mesajı:
+  → Dosyalarda değişiklik yok, normal
+============================================================
