@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+dist/
+build/
+*.spec
+*.egg-info/
+
+# PyInstaller çıktısı
+dist/
+build/
+
+# Kullanıcı config (şifre içerebilir)
+.poliport_config.json
+
+# İndirilen formlar
+Kontrol Formları/
+
+# Token içerdiği için asla GitHub'a gönderilmesin
+PUSH.bat
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDE
+.vscode/
+.idea/
