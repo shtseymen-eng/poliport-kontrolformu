@@ -52,9 +52,16 @@ jobs:
         run: choco install nsis -y --no-progress
 
       - name: NSIS ile Setup.exe olustur
+        shell: powershell
         run: |
-          copy dist\PoliportArsiv.exe PoliportArsiv.exe
-          makensis installer.nsi
+          Copy-Item dist\PoliportArsiv.exe PoliportArsiv.exe
+          $makensis = "C:\Program Files (x86)\NSIS\makensis.exe"
+          if (-not (Test-Path $makensis)) {
+            $makensis = (Get-ChildItem "C:\Program Files*\NSIS\makensis.exe" -ErrorAction SilentlyContinue | Select-Object -First 1).FullName
+          }
+          Write-Host "makensis yolu: $makensis"
+          & $makensis installer.nsi
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Release olustur ve Setup.exe yukle
         uses: softprops/action-gh-release@v2
