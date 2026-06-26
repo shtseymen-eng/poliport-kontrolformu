@@ -21,22 +21,22 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Bağımlılıkları yükle
-        run: |
-          pip install pyinstaller pillow openpyxl requests requests-ntlm requests-negotiate-sspi
+      - name: Bagimliliklar
+        run: pip install pyinstaller pillow openpyxl requests requests-ntlm requests-negotiate-sspi
 
-      - name: icon.png yoksa yer tutucu oluştur
+      - name: Yer tutucu icon olustur (icon.png yoksa)
         run: |
           python -c "
-          try:
-              from PIL import Image
+          import os
+          if not os.path.exists('icon.png'):
+              from PIL import Image, ImageDraw
               img = Image.new('RGBA', (256,256), (26,82,118,255))
+              d = ImageDraw.Draw(img)
+              d.rectangle([30,80,226,176], fill=(255,255,255,200))
               img.save('icon.png')
-          except:
-              pass
           "
 
-      - name: icon.ico oluştur
+      - name: icon.ico olustur
         run: |
           python -c "
           from PIL import Image
@@ -48,22 +48,37 @@ jobs:
         run: |
           pyinstaller --onefile --windowed --icon=icon.ico --name=PoliportArsiv --add-data "icon.png;." poliport_arsiv.py
 
-      - name: Release oluştur ve .exe yükle
+      - name: NSIS kurulumu
+        run: choco install nsis -y --no-progress
+
+      - name: NSIS ile Setup.exe olustur
+        run: |
+          copy dist\PoliportArsiv.exe PoliportArsiv.exe
+          makensis installer.nsi
+
+      - name: Release olustur ve Setup.exe yukle
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.ref_name || 'v1.0' }}
-          name: "Poliport Kontrol Formu Arşivi ${{ github.ref_name || 'v1.0' }}"
+          tag_name: ${{ github.ref_name }}
+          name: "Poliport Kontrol Formu Arşivi ${{ github.ref_name }}"
           body: |
-            ## İndir
+            ## ⬇️ İndir
 
-            **PoliportArsiv.exe** dosyasını indir, çift tıkla — kurulum gerekmez.
+            **`PoliportArsiv_Setup_v1.0.exe`** dosyasını indir ve çalıştır.
+
+            Kurulum sihirbazı:
+            - Programı Program Files'a kurar
+            - Masaüstüne kısayol oluşturur
+            - Başlat menüsüne ekler
+            - Kaldırma (uninstall) desteği
 
             ### Gereksinimler
-            - Windows 10/11
+            - Windows 10 / 11
             - Poliport sunucusuna erişim (domain ağı)
 
             ---
             *S. SEYMEN tarafından hazırlanmıştır*
-          files: dist/PoliportArsiv.exe
+          files: PoliportArsiv_Setup_v1.0.exe
           draft: false
           prerelease: false
+          fail_on_unmatched_files: true
