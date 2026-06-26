@@ -63,20 +63,15 @@ jobs:
           & $makensis installer.nsi
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-      - name: Mevcut release sil (varsa)
-        shell: powershell
-        run: |
-          $headers = @{
-            Authorization = "token ${{ secrets.GITHUB_TOKEN }}"
-            Accept = "application/vnd.github.v3+json"
-          }
-          $repo = "${{ github.repository }}"
-          $tag  = "${{ github.ref_name }}"
-          try {
-            $rel = Invoke-RestMethod -Uri "https://api.github.com/repos/$repo/releases/tags/$tag" -Headers $headers -ErrorAction Stop
-            Invoke-RestMethod -Uri "https://api.github.com/repos/$repo/releases/$($rel.id)" -Method Delete -Headers $headers
-            Write-Host "Eski release silindi"
-          } catch { Write-Host "Silinecek release yok" }
+      - name: Setup.exe var mi kontrol et
+        run: dir PoliportArsiv_Setup_v1.0.exe
+
+      - name: Eser olarak yukle (Actions sayfasinda gorunsun)
+        uses: actions/upload-artifact@v4
+        with:
+          name: PoliportArsiv-Setup
+          path: PoliportArsiv_Setup_v1.0.exe
+          retention-days: 90
 
       - name: Release olustur ve Setup.exe yukle
         uses: softprops/action-gh-release@v2
