@@ -1,0 +1,66 @@
+name: Build & Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Python kurulumu
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Bağımlılıkları yükle
+        run: |
+          pip install pyinstaller pillow openpyxl requests requests-ntlm requests-negotiate-sspi
+
+      - name: icon.png yoksa yer tutucu oluştur
+        run: |
+          python -c "
+          try:
+              from PIL import Image
+              img = Image.new('RGBA', (256,256), (26,82,118,255))
+              img.save('icon.png')
+          except:
+              pass
+          "
+
+      - name: icon.ico oluştur
+        run: |
+          python -c "
+          from PIL import Image
+          img = Image.open('icon.png').convert('RGBA')
+          img.save('icon.ico', format='ICO', sizes=[(256,256),(128,128),(64,64),(48,48),(32,32),(16,16)])
+          "
+
+      - name: PyInstaller ile .exe derle
+        run: |
+          pyinstaller --onefile --windowed --icon=icon.ico --name=PoliportArsiv --add-data "icon.png;." poliport_arsiv.py
+
+      - name: Release oluştur ve .exe yükle
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name || 'v1.0' }}
+          name: "Poliport Kontrol Formu Arşivi ${{ github.ref_name || 'v1.0' }}"
+          body: |
+            ## İndir
+
+            **PoliportArsiv.exe** dosyasını indir, çift tıkla — kurulum gerekmez.
+
+            ### Gereksinimler
+            - Windows 10/11
+            - Poliport sunucusuna erişim (domain ağı)
+
+            ---
+            *S. SEYMEN tarafından hazırlanmıştır*
+          files: dist/PoliportArsiv.exe
+          draft: false
+          prerelease: false
