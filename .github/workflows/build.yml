@@ -22,7 +22,7 @@ jobs:
           python-version: "3.11"
 
       - name: Bagimliliklar
-        run: pip install pyinstaller pillow openpyxl requests requests-ntlm requests-negotiate-sspi
+        run: pip install pyinstaller pillow openpyxl requests requests-ntlm requests-negotiate-sspi pywin32
 
       - name: Yer tutucu icon olustur
         run: |
@@ -43,7 +43,7 @@ jobs:
           "
 
       - name: PyInstaller ile .exe derle
-        run: pyinstaller --onefile --windowed --icon=icon.ico --name=PoliportArsiv --add-data "icon.png;." poliport_arsiv.py
+        run: pyinstaller --onefile --windowed --icon=icon.ico --name=PoliportArsiv --add-data "icon.png;." --hidden-import win32timezone --hidden-import win32api --hidden-import win32con --hidden-import win32security --collect-all pywin32 poliport_arsiv.py
 
       - name: NSIS kurulumu
         run: choco install nsis -y --no-progress
