@@ -203,14 +203,26 @@ class PoliportApp:
     def _load_icon(self):
         icon_path = os.path.join(BASE_DIR, "icon.png")
         ico_path  = os.path.join(BASE_DIR, "icon.ico")
+        self._ico_path = None
         try:
             from PIL import Image, ImageTk
             img = Image.open(icon_path)
-            # Pencere başlık ikonu için 32x32 ICO oluştur (eğer yoksa)
-            if not os.path.exists(ico_path):
-                ico_img = img.resize((256, 256), Image.LANCZOS)
-                ico_img.save(ico_path, format="ICO", sizes=[(256,256),(64,64),(32,32),(16,16)])
-            self.root.iconbitmap(ico_path)
+            # Pencere başlık ikonu
+            import platform
+            if platform.system() == "Windows":
+                if not os.path.exists(ico_path):
+                    ico_img = img.resize((256, 256), Image.LANCZOS)
+                    ico_img.save(ico_path, format="ICO", sizes=[(256,256),(64,64),(32,32),(16,16)])
+                try:
+                    self.root.iconbitmap(ico_path)
+                    self._ico_path = ico_path
+                except Exception:
+                    pass
+            else:
+                # Mac / Linux: wm_iconphoto kullan
+                icon_tk = ImageTk.PhotoImage(img.resize((64, 64), Image.LANCZOS))
+                self.root.wm_iconphoto(True, icon_tk)
+                self._icon_tk = icon_tk  # GC koruması
             # Header'da göstermek için 48x48 tkinter resmi
             thumb = img.resize((48, 48), Image.LANCZOS)
             self.icon_img = ImageTk.PhotoImage(thumb)
@@ -378,12 +390,43 @@ class PoliportApp:
                  ).pack(side=tk.RIGHT, padx=12)
 
     # ── Dosya/klasör seçimi ───────────────────────────────────────────────────
+    def _get_downloads_folder(self):
+        """Gerçek İndirilenler/Downloads klasörünü döndürür (Windows/Mac/Linux)."""
+        import platform
+        home = os.path.expanduser("~")
+        if platform.system() == "Windows":
+            try:
+                import winreg
+                with winreg.OpenKey(winreg.HKEY_CURRENT_USER,
+                    r"Software\Microsoft\Windows\CurrentVersion\Explorer\Shell Folders") as k:
+                    path = winreg.QueryValueEx(k, "{374DE290-123F-4565-9164-39C4925E467B}")[0]
+                    if os.path.isdir(path):
+                        return path
+            except Exception:
+                pass
+            for name in ["Downloads", "İndirilenler"]:
+                d = os.path.join(home, name)
+                if os.path.isdir(d):
+                    return d
+        else:
+            for name in ["Downloads", "Desktop", "Masaüstü"]:
+                d = os.path.join(home, name)
+                if os.path.isdir(d):
+                    return d
+        return home
+
     def browse_report(self):
+        init_dir = self.config.get("last_report_dir", "")
+        if not init_dir or not os.path.isdir(init_dir):
+            init_dir = self._get_downloads_folder()
         p = filedialog.askopenfilename(
             title="Rapor Dosyasını Seç",
+            initialdir=init_dir,
             filetypes=[("Excel Dosyası", "*.xlsx *.xls"), ("Tüm Dosyalar", "*.*")]
         )
         if p:
+            self.config["last_report_dir"] = os.path.dirname(p)
+            self._save_config()
             self.report_var.set(p)
             self.load_report()
 
@@ -682,7 +725,7 @@ class PoliportApp:
             if idx < len(self.tree_items):
                 iid = self.tree_items[idx]
                 vals = list(self.tree.item(iid, "values"))
-                vals[7] = durum
+                vals[9] = durum   # durum sütunu: chk(0)..nakliyeci(8) durum(9)
                 self.tree.item(iid, values=vals, tags=(tag,) if tag else ())
         self.root.after(0, _do)
 
@@ -733,12 +776,15 @@ class PoliportApp:
         if u and p:
             session.auth = HttpNtlmAuth(u, p)
         else:
-            # Windows integrated auth (SSPI) — domain PC'lerde şifresiz çalışır
-            try:
-                from requests_negotiate_sspi import HttpNegotiateAuth
-                session.auth = HttpNegotiateAuth()
-            except ImportError:
-                pass   # Auth olmadan dene; 401 gelirse popup açılır
+            import platform
+            if platform.system() == "Windows":
+                # Windows integrated auth (SSPI) — domain PC'lerde şifresiz çalışır
+                try:
+                    from requests_negotiate_sspi import HttpNegotiateAuth
+                    session.auth = HttpNegotiateAuth()
+                except ImportError:
+                    pass   # Auth olmadan dene; 401 gelirse popup açılır
+            # Mac/Linux: auth olmadan dene; 401 gelirse popup açılır
         return session
 
     # ── İndirme ──────────────────────────────────────────────────────────────
