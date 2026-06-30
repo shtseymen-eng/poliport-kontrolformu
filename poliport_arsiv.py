@@ -146,33 +146,6 @@ def transform_ssrs_url(raw_url):
     return url + sep + 'rs:Format=EXCELOPENXML'
 
 
-def build_filename(plaka, dorse, konteyner, ad, soyad, nakliyeci):
-    """
-    Dosya adı kuralları:
-      - Konteyner var : CEKICI_DORSE_KONTEYNER_AD_SOYAD_NAKLIYECI.xlsx
-      - Normal TIR   : CEKICI_DORSE_AD_SOYAD_NAKLIYECI.xlsx
-      - 40 Ayak      : CEKICI_AD_SOYAD_NAKLIYECI.xlsx  (plaka == dorse)
-    """
-    p = clean_filename_part(plaka)
-    d = clean_filename_part(dorse)
-    k = clean_filename_part(konteyner)
-    a = clean_filename_part(ad)
-    s = clean_filename_part(soyad)
-    n = clean_filename_part(nakliyeci)
-
-    parts = [p]
-    if d and d != p:
-        parts.append(d)
-    if k:
-        parts.append(k)
-    parts.append(a)
-    parts.append(s)
-    if n:
-        parts.append(n)
-
-    return "_".join(parts) + ".xlsx"
-
-
 def build_folder_path(base, tarih):
     """Kontrol Formları / 2026 / Nisan / 29"""
     if not tarih:
