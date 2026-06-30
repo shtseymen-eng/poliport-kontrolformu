@@ -5,13 +5,13 @@
 !define APP_EXE  "PoliportArsiv.exe"
 !define APP_VER  "1.0"
 !define PUBLISHER "S. SEYMEN"
-!define INSTALL_DIR "$PROGRAMFILES64\Poliport Kontrol Formu"
+!define INSTALL_DIR "$LOCALAPPDATA\Poliport Kontrol Formu"
 
 Name "${APP_NAME}"
 OutFile "PoliportArsiv_Setup_v${APP_VER}.exe"
 InstallDir "${INSTALL_DIR}"
-InstallDirRegKey HKLM "Software\${APP_NAME}" "InstallDir"
-RequestExecutionLevel admin
+InstallDirRegKey HKCU "Software\${APP_NAME}" "InstallDir"
+RequestExecutionLevel user
 SetCompressor /SOLID lzma
 
 ; Modern UI
@@ -48,13 +48,13 @@ Section "Ana Uygulama" SecMain
     CreateShortcut "$SMPROGRAMS\${APP_NAME}\${APP_NAME}.lnk" "$INSTDIR\${APP_EXE}" "" "$INSTDIR\icon.ico"
     CreateShortcut "$SMPROGRAMS\${APP_NAME}\Kaldir.lnk" "$INSTDIR\Uninstall.exe"
 
-    ; Kayit defteri
-    WriteRegStr HKLM "Software\${APP_NAME}" "InstallDir" "$INSTDIR"
-    WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APP_NAME}" "DisplayName" "${APP_NAME}"
-    WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APP_NAME}" "UninstallString" "$INSTDIR\Uninstall.exe"
-    WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APP_NAME}" "DisplayIcon" "$INSTDIR\icon.ico"
-    WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APP_NAME}" "Publisher" "${PUBLISHER}"
-    WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APP_NAME}" "DisplayVersion" "${APP_VER}"
+    ; Kayit defteri (kullanici seviyesi - admin gerekmez)
+    WriteRegStr HKCU "Software\${APP_NAME}" "InstallDir" "$INSTDIR"
+    WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APP_NAME}" "DisplayName" "${APP_NAME}"
+    WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APP_NAME}" "UninstallString" "$INSTDIR\Uninstall.exe"
+    WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APP_NAME}" "DisplayIcon" "$INSTDIR\icon.ico"
+    WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APP_NAME}" "Publisher" "${PUBLISHER}"
+    WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APP_NAME}" "DisplayVersion" "${APP_VER}"
 
     WriteUninstaller "$INSTDIR\Uninstall.exe"
 SectionEnd
@@ -66,6 +66,6 @@ Section "Uninstall"
     RMDir "$INSTDIR"
     Delete "$DESKTOP\${APP_NAME}.lnk"
     RMDir /r "$SMPROGRAMS\${APP_NAME}"
-    DeleteRegKey HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APP_NAME}"
-    DeleteRegKey HKLM "Software\${APP_NAME}"
+    DeleteRegKey HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APP_NAME}"
+    DeleteRegKey HKCU "Software\${APP_NAME}"
 SectionEnd
