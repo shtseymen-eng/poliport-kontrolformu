@@ -10,29 +10,27 @@ permissions:
   contents: write
 
 jobs:
-  build:
-    runs-on: windows-latest
 
+  # ── Windows: Setup.exe ───────────────────────────────────────────────────────
+  build-windows:
+    runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Python kurulumu
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
       - name: Bagimliliklar
         run: pip install pyinstaller pillow openpyxl requests requests-ntlm requests-negotiate-sspi
 
-      - name: Yer tutucu icon olustur (icon.png yoksa)
+      - name: Yer tutucu icon olustur
         run: |
           python -c "
           import os
           if not os.path.exists('icon.png'):
-              from PIL import Image, ImageDraw
+              from PIL import Image
               img = Image.new('RGBA', (256,256), (26,82,118,255))
-              d = ImageDraw.Draw(img)
-              d.rectangle([30,80,226,176], fill=(255,255,255,200))
               img.save('icon.png')
           "
 
@@ -45,8 +43,7 @@ jobs:
           "
 
       - name: PyInstaller ile .exe derle
-        run: |
-          pyinstaller --onefile --windowed --icon=icon.ico --name=PoliportArsiv --add-data "icon.png;." poliport_arsiv.py
+        run: pyinstaller --onefile --windowed --icon=icon.ico --name=PoliportArsiv --add-data "icon.png;." poliport_arsiv.py
 
       - name: NSIS kurulumu
         run: choco install nsis -y --no-progress
@@ -55,25 +52,89 @@ jobs:
         shell: powershell
         run: |
           Copy-Item dist\PoliportArsiv.exe PoliportArsiv.exe
-          $makensis = "C:\Program Files (x86)\NSIS\makensis.exe"
-          if (-not (Test-Path $makensis)) {
-            $makensis = (Get-ChildItem "C:\Program Files*\NSIS\makensis.exe" -ErrorAction SilentlyContinue | Select-Object -First 1).FullName
-          }
-          Write-Host "makensis yolu: $makensis"
+          $makensis = (Get-ChildItem "C:\Program Files*\NSIS\makensis.exe" -ErrorAction SilentlyContinue | Select-Object -First 1).FullName
+          Write-Host "makensis: $makensis"
           & $makensis installer.nsi
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-      - name: Setup.exe var mi kontrol et
-        run: dir PoliportArsiv_Setup_v1.0.exe
-
-      - name: Eser olarak yukle (Actions sayfasinda gorunsun)
+      - name: Windows artifact yukle
         uses: actions/upload-artifact@v4
         with:
-          name: PoliportArsiv-Setup
+          name: windows-setup
           path: PoliportArsiv_Setup_v1.0.exe
-          retention-days: 90
 
-      - name: Release olustur ve Setup.exe yukle
+  # ── Mac: zip ─────────────────────────────────────────────────────────────────
+  build-mac:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Bagimliliklar
+        run: pip install pyinstaller pillow openpyxl requests requests-ntlm
+
+      - name: Yer tutucu icon olustur
+        run: |
+          python3 -c "
+          import os
+          if not os.path.exists('icon.png'):
+              from PIL import Image
+              img = Image.new('RGBA', (256,256), (26,82,118,255))
+              img.save('icon.png')
+          "
+
+      - name: PyInstaller ile Mac .app derle
+        run: |
+          pyinstaller --onefile --windowed --icon=icon.png --name=PoliportArsiv --add-data "icon.png:." poliport_arsiv.py
+
+      - name: Mac zip olustur
+        run: |
+          mkdir -p PoliportArsiv-Mac
+          cp dist/PoliportArsiv PoliportArsiv-Mac/
+          cp icon.png PoliportArsiv-Mac/
+          cp KUR_VE_CALISTIR_MAC.command PoliportArsiv-Mac/
+          chmod +x PoliportArsiv-Mac/PoliportArsiv
+          chmod +x PoliportArsiv-Mac/KUR_VE_CALISTIR_MAC.command
+          zip -r PoliportArsiv-Mac.zip PoliportArsiv-Mac/
+
+      - name: Mac artifact yukle
+        uses: actions/upload-artifact@v4
+        with:
+          name: mac-zip
+          path: PoliportArsiv-Mac.zip
+
+  # ── Release: Her iki dosyayi ekle ────────────────────────────────────────────
+  release:
+    needs: [build-windows, build-mac]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Windows artifact indir
+        uses: actions/download-artifact@v4
+        with:
+          name: windows-setup
+
+      - name: Mac artifact indir
+        uses: actions/download-artifact@v4
+        with:
+          name: mac-zip
+
+      - name: Mevcut release sil
+        run: |
+          TAG="${{ github.ref_name }}"
+          REPO="${{ github.repository }}"
+          TOKEN="${{ secrets.GITHUB_TOKEN }}"
+          REL_ID=$(curl -s -H "Authorization: token $TOKEN" \
+            "https://api.github.com/repos/$REPO/releases/tags/$TAG" | jq -r '.id // empty')
+          if [ -n "$REL_ID" ]; then
+            curl -s -X DELETE -H "Authorization: token $TOKEN" \
+              "https://api.github.com/repos/$REPO/releases/$REL_ID"
+            echo "Eski release silindi"
+          fi
+
+      - name: Release olustur ve dosyalari yukle
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name }}
@@ -81,21 +142,20 @@ jobs:
           body: |
             ## ⬇️ İndir
 
-            **`PoliportArsiv_Setup_v1.0.exe`** dosyasını indir ve çalıştır.
-
-            Kurulum sihirbazı:
-            - Programı Program Files'a kurar
-            - Masaüstüne kısayol oluşturur
-            - Başlat menüsüne ekler
-            - Kaldırma (uninstall) desteği
+            | Platform | Dosya | Açıklama |
+            |----------|-------|----------|
+            | 🪟 Windows | `PoliportArsiv_Setup_v1.0.exe` | Kurulum sihirbazı — çift tıkla, kur, çalıştır |
+            | 🍎 Mac | `PoliportArsiv-Mac.zip` | Zip'i aç, `KUR_VE_CALISTIR_MAC.command`'a çift tıkla |
 
             ### Gereksinimler
-            - Windows 10 / 11
             - Poliport sunucusuna erişim (domain ağı)
+            - Mac için Python 3 gerekli (python.org'dan ücretsiz indir)
 
             ---
             *S. SEYMEN tarafından hazırlanmıştır*
-          files: PoliportArsiv_Setup_v1.0.exe
+          files: |
+            PoliportArsiv_Setup_v1.0.exe
+            PoliportArsiv-Mac.zip
           draft: false
           prerelease: false
           fail_on_unmatched_files: true
