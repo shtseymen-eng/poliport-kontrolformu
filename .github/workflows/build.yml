@@ -63,28 +63,18 @@ jobs:
           name: windows-setup
           path: PoliportArsiv_Setup_v1.0.exe
 
-  # ── Mac: zip (binary yok, Python scripti ile calisir - Gatekeeper sorunu olmaz) ──
+  # ── Mac: zip (Python scripti - Gatekeeper sorunu olmaz) ──────────────────────
   build-mac:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Yer tutucu icon olustur (yoksa)
-        run: |
-          if [ ! -f icon.png ]; then
-            python3 -c "
-from PIL import Image
-img = Image.new('RGBA', (256,256), (26,82,118,255))
-img.save('icon.png')
-"
-          fi
-
       - name: Mac zip olustur
         run: |
           mkdir -p PoliportArsiv-Mac
           cp poliport_arsiv.py PoliportArsiv-Mac/
-          cp icon.png PoliportArsiv-Mac/
-          cat > PoliportArsiv-Mac/Poliport\ Kontrol\ Formu.command << 'CMDEOF'
+          [ -f icon.png ] && cp icon.png PoliportArsiv-Mac/ || echo "icon.png yok, atlandi"
+          cat > "PoliportArsiv-Mac/Poliport Kontrol Formu.command" << 'CMDEOF'
           #!/bin/bash
           cd "$(dirname "$0")"
           echo "================================"
@@ -148,7 +138,7 @@ img.save('icon.png')
             | Platform | Dosya | Açıklama |
             |----------|-------|----------|
             | 🪟 Windows | `PoliportArsiv_Setup_v1.0.exe` | Kurulum sihirbazı — çift tıkla, kur, çalıştır |
-            | 🍎 Mac | `PoliportArsiv-Mac.zip` | Zip'i aç, `KUR_VE_CALISTIR_MAC.command`'a çift tıkla |
+            | 🍎 Mac | `PoliportArsiv-Mac.zip` | Zip'i aç, `.command` dosyasına çift tıkla |
 
             ### Gereksinimler
             - Poliport sunucusuna erişim (domain ağı)
