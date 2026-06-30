@@ -39,6 +39,9 @@ def check_and_install(pkg, import_name=None):
 check_and_install("openpyxl")
 check_and_install("requests")
 check_and_install("requests_ntlm", "requests_ntlm")
+import platform as _platform
+if _platform.system() == "Windows":
+    check_and_install("pywin32", "win32api")
 
 import openpyxl
 import requests
@@ -470,7 +473,13 @@ class PoliportApp:
                  font=("Segoe UI", 9), width=14, anchor="w").grid(row=0, column=0, pady=3)
         user_e = tk.Entry(frame, width=28, bg="white", font=("Segoe UI", 9))
         user_e.grid(row=0, column=1)
-        user_e.insert(0, self.config.get("username", ""))
+        saved_user = self.config.get("username", "")
+        user_e.insert(0, saved_user)
+        # Domain ipucu (Mac'te DOMAIN\kullanici formatı gerekebilir)
+        import platform as _pl
+        if _pl.system() != "Windows" and "\\" not in saved_user:
+            tk.Label(frame, text="Mac: POLISAN\\kullanici", bg="#ecf0f1",
+                     font=("Segoe UI", 8), fg="#888").grid(row=0, column=2, padx=4)
 
         tk.Label(frame, text="Şifre:", bg="#ecf0f1",
                  font=("Segoe UI", 9), width=14, anchor="w").grid(row=1, column=0, pady=3)
@@ -809,7 +818,7 @@ class PoliportApp:
     def _download_thread(self, selected, save_folder):
         session = self._make_session()
         ok = fail = 0
-        auth_confirmed = False   # 401 gelince bir kez popup açılır, sonra tekrar kullanılır
+        auth_confirmed = False   # credentials başarılı doğrulandı mı
 
         for prog, (rec_idx, rec) in enumerate(selected):
             plaka = rec["plaka"]
@@ -853,62 +862,69 @@ class PoliportApp:
                     ok += 1
 
                 elif resp.status_code == 401:
+                    # 401: popup göster, max 3 deneme, başarılı olunca auth_confirmed=True
                     if not auth_confirmed:
                         self.log(f"  ⚠ Yetki hatası — kimlik bilgisi isteniyor...")
-                        # Ana thread'de popup aç (thread-safe)
-                        cred_result = [None, None]
-                        retry_flag = [False]
-
-                        def ask_cred():
-                            u, p = self._ask_credentials(retry=False)
-                            cred_result[0] = u
-                            cred_result[1] = p
-                            retry_flag[0] = bool(u and p)
-
-                        self.root.after(0, ask_cred)
-                        # Popup kapanana kadar bekle (max 60 sn)
                         import time
-                        for _ in range(120):
-                            time.sleep(0.5)
-                            if retry_flag[0] or cred_result[0] is not None:
+                        saved = False
+                        for attempt in range(3):
+                            cred_result = [None, None]
+                            done_flag   = [False]
+
+                            def ask_cred(retry=attempt > 0):
+                                u, p = self._ask_credentials(retry=retry)
+                                cred_result[0] = u if u else ""
+                                cred_result[1] = p if p else ""
+                                done_flag[0] = True
+
+                            self.root.after(0, ask_cred)
+                            for _ in range(120):
+                                time.sleep(0.5)
+                                if done_flag[0]:
+                                    break
+
+                            if not cred_result[0]:  # iptal
+                                self.log(f"  ✗ İptal edildi.")
+                                self._set_row(rec_idx, "✗ İptal", "error")
+                                fail += 1
                                 break
 
-                        if retry_flag[0] and cred_result[0]:
                             session = self._make_session(cred_result[0], cred_result[1])
-                            auth_confirmed = True
-                            # Aynı satırı tekrar dene
                             try:
                                 resp2 = session.get(dl_url, timeout=45, stream=True)
-                                if resp2.status_code == 200:
-                                    folder = build_folder_path(save_folder, rec["tarih"])
-                                    os.makedirs(folder, exist_ok=True)
-                                    fname = build_filename(rec["plaka"], rec["dorse"],
-                                                          rec["konteyner"], rec["ad"],
-                                                          rec["soyad"], rec["nakliyeci"])
-                                    fpath = os.path.join(folder, fname)
-                                    base, ext = os.path.splitext(fpath)
-                                    counter = 1
-                                    while os.path.exists(fpath):
-                                        fpath = f"{base}_{counter}{ext}"
-                                        counter += 1
-                                    with open(fpath, "wb") as f:
-                                        for chunk in resp2.iter_content(8192):
-                                            if chunk: f.write(chunk)
-                                    self.log(f"  ✓ {fname}")
-                                    self._set_row(rec_idx, f"✓ {fname}", "ok")
-                                    ok += 1
-                                else:
-                                    self.log(f"  ✗ Kimlik doğrulanamadı.")
-                                    self._set_row(rec_idx, "✗ Kimlik Hatası", "error")
-                                    fail += 1
                             except Exception as e:
                                 self.log(f"  ✗ {e}")
                                 self._set_row(rec_idx, "✗ Hata", "error")
                                 fail += 1
-                        else:
-                            self.log(f"  ✗ İptal edildi.")
-                            self._set_row(rec_idx, "✗ İptal", "error")
-                            fail += 1
+                                break
+
+                            if resp2.status_code == 200:
+                                folder = build_folder_path(save_folder, rec["tarih"])
+                                os.makedirs(folder, exist_ok=True)
+                                fname = build_filename(rec["plaka"], rec["dorse"],
+                                                      rec["konteyner"], rec["ad"],
+                                                      rec["soyad"], rec["nakliyeci"])
+                                fpath = os.path.join(folder, fname)
+                                base, ext = os.path.splitext(fpath)
+                                counter = 1
+                                while os.path.exists(fpath):
+                                    fpath = f"{base}_{counter}{ext}"
+                                    counter += 1
+                                with open(fpath, "wb") as f:
+                                    for chunk in resp2.iter_content(8192):
+                                        if chunk: f.write(chunk)
+                                self.log(f"  ✓ {fname}")
+                                self._set_row(rec_idx, f"✓ {fname}", "ok")
+                                ok += 1
+                                auth_confirmed = True  # kimlik doğrulandı
+                                saved = True
+                                break
+                            else:
+                                self.log(f"  ✗ Kimlik hatalı (deneme {attempt+1}/3)")
+                                if attempt == 2:
+                                    self.log("  ✗ 3 deneme başarısız, iptal ediliyor.")
+                                    self._set_row(rec_idx, "✗ Kimlik Hatası", "error")
+                                    fail += 1
                     else:
                         self.log(f"  ✗ Yetki hatası (401): {plaka}")
                         self._set_row(rec_idx, "✗ Yetki Hatası", "error")
