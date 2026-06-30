@@ -63,66 +63,34 @@ jobs:
           name: windows-setup
           path: PoliportArsiv_Setup_v1.0.exe
 
-  # ── Mac: zip ─────────────────────────────────────────────────────────────────
+  # ── Mac: zip (binary yok, Python scripti ile calisir - Gatekeeper sorunu olmaz) ──
   build-mac:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-
-      - name: Bagimliliklar
-        run: pip install pyinstaller pillow openpyxl requests requests-ntlm
-
-      - name: Yer tutucu icon olustur
-        run: |
-          python3 -c "
-          import os
-          if not os.path.exists('icon.png'):
-              from PIL import Image
-              img = Image.new('RGBA', (256,256), (26,82,118,255))
-              img.save('icon.png')
-          "
-
-      - name: icon.icns olustur
-        run: |
-          python3 -c "
-          from PIL import Image
-          import os, struct, zlib
-          img = Image.open('icon.png').convert('RGBA')
-          iconset = 'icon.iconset'
-          os.makedirs(iconset, exist_ok=True)
-          for size in [16,32,64,128,256,512]:
-              img.resize((size,size), Image.LANCZOS).save(f'{iconset}/icon_{size}x{size}.png')
-              img.resize((size*2,size*2), Image.LANCZOS).save(f'{iconset}/icon_{size}x{size}@2x.png')
-          "
-          iconutil -c icns icon.iconset -o icon.icns
-
-      - name: PyInstaller ile Mac .app derle
-        run: |
-          pyinstaller --onefile --windowed --icon=icon.icns --name=PoliportArsiv --add-data "icon.png:." poliport_arsiv.py
-
       - name: Mac zip olustur
         run: |
           mkdir -p PoliportArsiv-Mac
-          cp dist/PoliportArsiv PoliportArsiv-Mac/
+          cp poliport_arsiv.py PoliportArsiv-Mac/
           cp icon.png PoliportArsiv-Mac/
-          # .command dosyasi yoksa inline olustur
-          if [ -f "KUR_VE_CALISTIR_MAC.command" ]; then
-            cp KUR_VE_CALISTIR_MAC.command PoliportArsiv-Mac/
-          else
-            cat > PoliportArsiv-Mac/KUR_VE_CALISTIR_MAC.command << 'EOF'
+          cat > PoliportArsiv-Mac/Poliport\ Kontrol\ Formu.command << 'CMDEOF'
           #!/bin/bash
           cd "$(dirname "$0")"
+          echo "================================"
+          echo " Poliport Kontrol Formu Arsivi"
+          echo "================================"
+          if ! command -v python3 &>/dev/null; then
+              osascript -e 'display alert "Python3 Gerekli" message "python.org adresinden Python 3 indirin." as critical'
+              exit 1
+          fi
+          echo "Bagimliliklar yukleniyor..."
           python3 -m pip install openpyxl requests requests-ntlm pillow -q 2>/dev/null || \
           python3 -m pip install openpyxl requests requests-ntlm pillow --break-system-packages -q
+          echo "Program baslatiliyor..."
           python3 poliport_arsiv.py
-          EOF
-          fi
-          chmod +x PoliportArsiv-Mac/PoliportArsiv
-          chmod +x PoliportArsiv-Mac/KUR_VE_CALISTIR_MAC.command
+          CMDEOF
+          chmod +x "PoliportArsiv-Mac/Poliport Kontrol Formu.command"
           zip -r PoliportArsiv-Mac.zip PoliportArsiv-Mac/
 
       - name: Mac artifact yukle
