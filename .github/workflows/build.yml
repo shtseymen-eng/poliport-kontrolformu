@@ -69,6 +69,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Yer tutucu icon olustur (yoksa)
+        run: |
+          if [ ! -f icon.png ]; then
+            python3 -c "
+from PIL import Image
+img = Image.new('RGBA', (256,256), (26,82,118,255))
+img.save('icon.png')
+"
+          fi
+
       - name: Mac zip olustur
         run: |
           mkdir -p PoliportArsiv-Mac
