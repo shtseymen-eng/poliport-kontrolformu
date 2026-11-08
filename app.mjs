@@ -1,21 +1,22 @@
-import {readReport,transformUrl,identity,filename,folder,validateExcel,norm} from './core.mjs';
+import {readReport,transformUrl,identity,filename,folder,validateExcel,norm} from './core.mjs?v=20261108-excel2';
 import {openArchive,getForm,putForm,listForms} from './history.mjs';
 import {keyHash,folderRecord,rememberFolder} from './folder.mjs';
+import {writeExcelToFolder} from './downloads.mjs?v=20261108-excel2';
 const $=id=>document.getElementById(id);
 let folderKnown=new Set();
-let records=[],selected=new Set(),history=new Map(),folderHandle=null,page=0,busy=false,stop=false,controller=null,lastZip=null;
+let records=[],selected=new Set(),history=new Map(),folderHandle=null,page=0,busy=false,stop=false,controller=null;
 const PAGE_SIZE=100;
 let lastSource='';
 function notice(message,error=false){$('notice').textContent=message;$('notice').hidden=false;$('notice').classList.toggle('error',error);}
 function log(message,type=''){const p=document.createElement('p');p.textContent=new Date().toLocaleTimeString('tr-TR')+'  '+message;p.className=type;$('log').append(p);while($('log').children.length>100)$('log').firstChild.remove();$('log').scrollTop=$('log').scrollHeight;}
 function known(key){return folderHandle?folderKnown.has(key):history.has(key);}
 function status(record){return record.status||(known(record.key)?'Arşivde':!record.url?'Link yok':!record.timestamp?'Saat eksik':'Bekliyor');}
-function controls(){for(const id of ['selectAll','selectNone','testOne','download'])$(id).disabled=busy||!records.length;for(const id of ['reportFile','loadUrl','pickFolder','zipMode','hosts','reportUrl','fileTab','urlTab'])$(id).disabled=busy;$('stop').hidden=!busy;}
+function controls(){for(const id of ['selectAll','selectNone','testOne','download'])$(id).disabled=busy||!records.length;for(const id of ['reportFile','loadUrl','pickFolder','hosts','reportUrl','fileTab','urlTab'])$(id).disabled=busy;$('stop').hidden=!busy;}
 function stats(){const unique=new Map(records.filter(r=>r.key&&r.timestamp).map(r=>[r.key,r]));$('total').textContent=records.length;$('newCount').textContent=[...unique.keys()].filter(k=>!known(k)).length;$('duplicateCount').textContent=records.filter(r=>r.key&&known(r.key)).length;$('selectedCount').textContent=selected.size;$('historyCount').textContent=history.size;}
 function render(){
- const query=norm($('search').value);const visible=records.filter(r=>!query||norm([r.plaka,r.dorse,r.konteyner,r.ad,r.soyad,r.nakliyeci].join(' ')).includes(query));
+ const query=norm($('search').value);const visible=records.filter(r=>(!$('onlyDownloaded').checked||known(r.key))&&(!query||norm([r.plaka,r.dorse,r.konteyner,r.ad,r.soyad,r.nakliyeci].join(' ')).includes(query)));
  const pages=Math.max(1,Math.ceil(visible.length/PAGE_SIZE));page=Math.min(page,pages-1);
- $('vehicles').replaceChildren();$('empty').hidden=records.length>0;$('pagination').hidden=visible.length<=PAGE_SIZE;
+ $('vehicles').replaceChildren();$('empty').hidden=visible.length>0;$('pagination').hidden=visible.length<=PAGE_SIZE;
  $('pageInfo').textContent=`${page+1} / ${pages} · ${visible.length} araç`;$('prev').disabled=page===0;$('next').disabled=page===pages-1;
  for(const rec of visible.slice(page*PAGE_SIZE,(page+1)*PAGE_SIZE)){
   const tr=document.createElement('tr');tr.className=known(rec.key)||['Kaydedildi','Arşivlendi'].includes(rec.status)?'downloaded':'pending';const td=document.createElement('td'),checkbox=document.createElement('input');checkbox.type='checkbox';checkbox.checked=selected.has(rec.row);checkbox.disabled=busy||!rec.url||!rec.timestamp||known(rec.key);checkbox.setAttribute('aria-label',rec.plaka+' aracını seç');checkbox.addEventListener('change',()=>{if(checkbox.checked)selected.add(rec.row);else selected.delete(rec.row);stats();});td.append(checkbox);tr.append(td);
@@ -52,7 +53,7 @@ async function loadReport(data,label){
  busy=true;controls();
  try{
   const parsed=await readReport(data,window.JSZip);
-  records=parsed;if(folderHandle){folderKnown.clear();for(const rec of records){if(rec.key&&await folderRecord(folderHandle,rec.key))folderKnown.add(rec.key);}}selected=new Set();page=0;lastSource=label;lastZip=null;$('saveZip').hidden=true;
+  records=parsed;if(!$('hosts').value.trim()){$('hosts').value=[...new Set(records.filter(r=>r.url).map(r=>new URL(r.url).host))].join(', ');}if(folderHandle){folderKnown.clear();for(const rec of records){if(rec.key&&await folderRecord(folderHandle,rec.key))folderKnown.add(rec.key);}}selected=new Set();page=0;lastSource=label;$('onlyDownloaded').checked=false;
   for(const rec of records)if(rec.key&&rec.timestamp&&!known(rec.key))selected.add(rec.row);
   $('reportSummary').textContent=label+' · '+records.length+' Terminal aracı';
   $('fileName').textContent=label;
@@ -64,59 +65,46 @@ async function loadReport(data,label){
 }
 async function fileChosen(file){if(!file)return;if(!/\.xlsx$/i.test(file.name)||file.size>20*1024*1024){notice('En fazla 20 MB büyüklüğünde bir .xlsx raporu seçin.',true);return;}await loadReport(await file.arrayBuffer(),file.name);}
 function saveBlob(blob,name){const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=name;document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),60000);}
-async function saveStored(key){try{const stored=await getForm(key);if(!stored?.blob)throw new Error('Saklanan belge bulunamadı.');saveBlob(stored.blob,stored.name);}catch(error){notice(error.message,true);}}
-async function writeFolder(path,blob){
- const parts=path.split('/');const name=parts.pop();let directory=folderHandle;
- for(const part of parts)directory=await directory.getDirectoryHandle(part,{create:true});
- let candidate=name;
- for(let number=0;number<10000;number++){
-  try{await directory.getFileHandle(candidate);candidate=name.slice(0,-5)+` (${number+1}).xlsx`;}
-  catch(error){if(error.name==='NotFoundError')break;throw error;}
-  if(number===9999)throw new Error('Aynı isimli çok fazla belge var.');
- }
- const handle=await directory.getFileHandle(candidate,{create:true});const writable=await handle.createWritable();
- try{await writable.write(blob);await writable.close();}catch(error){try{await writable.abort();}catch{}throw error;}
- return parts.join('/')+'/'+candidate;
+async function saveStored(key){try{const stored=await getForm(key);if(!stored?.blob)throw new Error('Saklanan belge bulunamadı.');saveBlob(stored.blob,records.find(r=>r.key===key)?filename(records.find(r=>r.key===key)):stored.name);}catch(error){notice(error.message,true);}}
+async function chooseFolder(){
+ if(!window.showDirectoryPicker)throw new Error('Excel dosyalarını doğrudan klasöre kaydetmek için güncel Chrome veya Edge kullanın.');
+ const chosen=await window.showDirectoryPicker({mode:'readwrite',id:'poliport-arsiv'});
+ folderHandle=chosen;folderKnown.clear();
+ for(const rec of records){if(rec.key){const saved=await folderRecord(folderHandle,rec.key);rec.status='';if(saved){folderKnown.add(rec.key);history.set(rec.key,saved);selected.delete(rec.row);}else if(rec.timestamp)selected.add(rec.row);}}
+ $('folderLabel').textContent=folderHandle.name;
+ $('folderHint').textContent='Her kontrol formu ayrı .xlsx dosyası olarak yıl / ay / gün klasörüne kaydedilir.';
+ render();
 }
 async function download(test=false){
  if(busy)return;
  const chosen=records.filter(r=>selected.has(r.row)&&r.url&&r.timestamp);if(test)chosen.splice(1);
  if(!chosen.length){notice('İndirilecek yeni form yok. Tümünü seç düğmesini kullanabilirsiniz.');return;}
  if(!navigator.locks){notice('Tekrar kayıt koruması için güncel Chrome veya Edge kullanın.',true);return;}
- if(folderHandle){try{if(await folderHandle.requestPermission({mode:'readwrite'})!=='granted')throw new Error('Kayıt klasörüne yazma izni verilmedi.');}catch(error){notice(error.message,true);return;}}
- busy=true;stop=false;lastZip=null;$('saveZip').hidden=true;render();
- const zip=new window.JSZip();let success=0,skipped=0,failed=0,totalBytes=0;
+ try{if(!folderHandle)await chooseFolder();if(await folderHandle.requestPermission({mode:'readwrite'})!=='granted')throw new Error('Kayıt klasörüne yazma izni verilmedi.');}catch(error){if(error.name!=='AbortError')notice(error.message,true);return;}
+ busy=true;stop=false;$('onlyDownloaded').checked=false;render();
+ let success=0,skipped=0,failed=0;
  for(let i=0;i<chosen.length;i++){
   if(stop)break;const rec=chosen[i];
   $('progressText').textContent=`${i+1} / ${chosen.length} · ${rec.plaka}`;rec.status='İndiriliyor';render();
   try{
    const hash=await keyHash(rec.key);
    await navigator.locks.request('poliport-'+hash,async()=>{
-    const existing=folderHandle?await folderRecord(folderHandle,rec.key):await getForm(rec.key);
+    const existing=await folderRecord(folderHandle,rec.key);
     if(existing?.blob){history.set(rec.key,existing);if(folderHandle)folderKnown.add(rec.key);rec.status='Atlandı';selected.delete(rec.row);skipped++;log(rec.plaka+' · Aynı saat ve form daha önce arşivlendi.');return;}
-    const cached=folderHandle?await getForm(rec.key):null;
+    const cached=await getForm(rec.key);
     const blob=cached?.blob||await fetchExcel(transformUrl(rec.url));await validateExcel(await blob.arrayBuffer(),window.JSZip);
     if(stop)throw new Error('İşlem durduruldu.');
-    if(!folderHandle&&totalBytes+blob.size>150*1024*1024){stop=true;throw new Error('Tek işlemde ZIP sınırı 150 MB. Kalan kayıtları sonraki işlemde indirin veya kayıt klasörü seçin.');}
-    const name=filename(rec);let path=folder(rec)+'/'+name;
-    // Keep unique visits with identical human-readable names in the same ZIP.
-    let suffix=1;while(zip.file(path))path=folder(rec)+'/'+name.slice(0,-5)+` (${suffix++}).xlsx`;
-    if(folderHandle)path=await writeFolder(path,blob);
+    const {name,path}=await writeExcelToFolder(folderHandle,rec,blob);
     const stored={key:rec.key,plaka:rec.plaka,timestamp:rec.timestamp,name,path,blob,savedAt:new Date().toISOString()};
     if(folderHandle)await rememberFolder(folderHandle,stored);
     await putForm(stored);history.set(rec.key,stored);if(folderHandle)folderKnown.add(rec.key);selected.delete(rec.row);
-    if(!folderHandle)zip.file(path,blob);
-    totalBytes+=blob.size;success++;rec.status=folderHandle?'Kaydedildi':'Arşivlendi';log(rec.plaka+' · '+rec.status+' · '+rec.tarih,'ok');
+    success++;rec.status='Kaydedildi';log(rec.plaka+' · '+rec.status+' · '+rec.tarih,'ok');
    });
   }catch(error){failed++;rec.status='Hata';log(rec.plaka+' · '+error.message,'error');notice(error.message,true);}
   $('progress').value=Math.round((i+1)/chosen.length*100);render();
  }
- if(success&&!folderHandle){
-  try{$('progressText').textContent='ZIP arşivi hazırlanıyor…';lastZip=await zip.generateAsync({type:'blob',compression:'STORE'});$('saveZip').hidden=false;saveBlob(lastZip,'Poliport_Kontrol_Formlari.zip');}
-  catch(error){notice('ZIP hazırlanamadı. Belgeler indirme geçmişinde saklanıyor; oradan alabilirsiniz.',true);}
- }
- $('progressText').textContent=`${success} form arşivlendi · ${skipped} tekrar atlandı · ${failed} hata${stop?' · İşlem durdu':''}`;
- log($('progressText').textContent);busy=false;render();
+ $('progressText').textContent=`${success} Excel kaydedildi · ${skipped} tekrar atlandı · ${failed} hata${stop?' · İşlem durdu':''}`;
+ log($('progressText').textContent);if(success||skipped)$('onlyDownloaded').checked=true;busy=false;render();
 }
 $('fileTab').addEventListener('click',()=>switchTab(false));$('urlTab').addEventListener('click',()=>switchTab(true));
 function switchTab(url){$('fileTab').setAttribute('aria-selected',String(!url));$('urlTab').setAttribute('aria-selected',String(url));$('filePanel').hidden=url;$('urlPanel').hidden=!url;}
@@ -129,19 +117,14 @@ $('loadUrl').addEventListener('click',async()=>{
  try{busy=true;controls();const blob=await fetchExcel(transformUrl($('reportUrl').value));busy=false;await loadReport(await blob.arrayBuffer(),'Bağlantıdan alınan rapor');}
  catch(error){notice(error.message,true);busy=false;controls();}
 });
-$('pickFolder').addEventListener('click',async()=>{
- if(!window.showDirectoryPicker){notice('Klasör seçimi için Chrome veya Edge kullanın. Bu tarayıcıda ZIP indirme seçeneği kullanılabilir.');return;}
- try{folderHandle=await window.showDirectoryPicker({mode:'readwrite',id:'poliport-arsiv'});folderKnown.clear();for(const rec of records){if(rec.key){const saved=await folderRecord(folderHandle,rec.key);rec.status='';if(saved){folderKnown.add(rec.key);history.set(rec.key,saved);selected.delete(rec.row);}else if(rec.timestamp)selected.add(rec.row);}}render();$('folderLabel').textContent=folderHandle.name;$('folderHint').textContent='Kontrol Formları / Yıl / Ay / Gün klasörleri bu konumda oluşturulacak.';$('zipMode').hidden=false;}
- catch(error){if(error.name!=='AbortError')notice('Klasör seçilemedi: '+error.message,true);}
-});
-$('zipMode').addEventListener('click',()=>{folderHandle=null;folderKnown.clear();for(const rec of records){rec.status='';if(history.has(rec.key))selected.delete(rec.row);}render();$('folderLabel').textContent='Tarayıcı arşivi + ZIP';$('folderHint').textContent='Formlar burada saklanır, ZIP olarak bilgisayarınıza iner.';$('zipMode').hidden=true;});
-$('selectAll').addEventListener('click',()=>{selected=new Set(records.filter(r=>r.key&&r.timestamp&&!known(r.key)).map(r=>r.row));render();});
+$('pickFolder').addEventListener('click',async()=>{try{await chooseFolder();}catch(error){if(error.name!=='AbortError')notice(error.message,true);}});
+$('selectAll').addEventListener('click',()=>{$('onlyDownloaded').checked=false;selected=new Set(records.filter(r=>r.key&&r.timestamp&&!known(r.key)).map(r=>r.row));render();});
 $('selectNone').addEventListener('click',()=>{selected.clear();render();});
 $('download').addEventListener('click',()=>download());$('testOne').addEventListener('click',()=>download(true));
 $('stop').addEventListener('click',()=>{stop=true;controller?.abort();});
 $('search').addEventListener('input',()=>{page=0;render();});
 $('prev').addEventListener('click',()=>{page--;render();});$('next').addEventListener('click',()=>{page++;render();});
-$('saveZip').addEventListener('click',()=>{if(lastZip)saveBlob(lastZip,'Poliport_Kontrol_Formlari.zip');});
+$('onlyDownloaded').addEventListener('change',()=>{page=0;render();});
 $('historyButton').addEventListener('click',async()=>{
  try{const forms=await listForms();$('historyList').replaceChildren();
   if(!forms.length){const p=document.createElement('p');p.textContent='Henüz arşivlenmiş belge yok.';$('historyList').append(p);}

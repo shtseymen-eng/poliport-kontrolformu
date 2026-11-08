@@ -24,7 +24,7 @@ export function clean(value,spaces=false) {
 }
 export function filename(r) {
   const p=clean(r.plaka), d=clean(r.dorse);
-  return [p,d!==p?d:'',clean(r.konteyner),clean(r.ad,true),clean(r.soyad,true),clean(r.nakliyeci,true)].filter(Boolean).join(' ').slice(0,175)+'.xlsx';
+  return [p,d!==p?d:'',clean(r.konteyner),clean(r.ad,true),clean(r.soyad,true)].filter(Boolean).join(' ').slice(0,175)+'.xlsx';
 }
 export function folder(r) {
   if(!r.timestamp) return 'Kontrol Formları/Tarihsiz';
@@ -104,7 +104,7 @@ export async function readReport(data,JSZip) {
     for(const candidate of candidates) {const partial=header.findIndex(c=>c&&norm(c.value).includes(norm(candidate)));if(partial>=0)return partial;}
     return fallback;
   }
-  const cols={tarih:find(['Kayıt Tarihi','Tarih'],1),departman:find(['Departman'],5),plaka:find(['Plaka','Çekici Plaka'],6),dorse:find(['Dorse Plaka','Dorse'],8),konteyner:find(['Konteyner No','Konteyner'],9),tip:find(['Araç Tipi','Araç Tip'],12),ad:find(['Sürücü Adı','Sürücü Ad'],14),soyad:find(['Sürücü Soyadı','Soyadı'],15),nakliyeci:find(['Nakliyeci'],16)};
+  const cols={tarih:find(['Kayıt Tarihi','Tarih'],1),departman:find(['Departman'],5),plaka:find(['Plaka','Çekici Plaka'],6),dorse:find(['Dorse Plaka','Dorse'],8),konteyner:find(['ISO Tank No','ISO Tank','Isotank No','Isotank','Konteyner No','Konteyner'],9),tip:find(['Araç Tipi','Araç Tip'],12),ad:find(['Sürücü Adı','Sürücü Ad'],14),soyad:find(['Sürücü Soyadı','Soyadı'],15),nakliyeci:find(['Nakliyeci'],16)};
   const date1904=['1','true'].includes(elements(workbook,'workbookPr')[0]?.getAttribute('date1904'));
   const records=[];
   for(const row of rows.slice(headerIndex+1)) {
