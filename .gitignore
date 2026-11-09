@@ -28,3 +28,7 @@ desktop.ini
 # IDE
 .vscode/
 .idea/
+
+# Web test dependencies
+node_modules/
+*.log

@@ -1,6 +1,8 @@
-import {readReport,transformUrl,identity,filename,folder,validateExcel,norm} from './core.mjs?v=20261108-excel2';
+import {transformUrl,identity,filename,folder,validateExcel,norm} from './core.mjs?v=20261109-large1';
+import {readReportOffThread} from './report-reader.mjs?v=20261109-large1';
+import {REPORT_LIMITS,MAX_FORM_BYTES,REPORT_FILE_LABEL} from './report-config.mjs';
 import {openArchive,getForm,putForm,listForms} from './history.mjs';
-import {keyHash,folderRecord,rememberFolder} from './folder.mjs';
+import {keyHash,folderRecord,rememberFolder,knownFolderKeys} from './folder.mjs?v=20261109-large1';
 import {writeExcelToFolder} from './downloads.mjs?v=20261108-excel2';
 const $=id=>document.getElementById(id);
 let folderKnown=new Set();
@@ -30,40 +32,42 @@ function render(){
  stats();controls();
 }
 function allowedHosts(){return new Set($('hosts').value.split(',').map(s=>s.trim().toLowerCase()).filter(Boolean));}
-async function fetchExcel(raw){
+async function fetchExcel(raw,{report=false}={}){
+ const byteLimit=report?REPORT_LIMITS.fileBytes:MAX_FORM_BYTES,sizeLabel=report?REPORT_FILE_LABEL:'25 MB';
  const url=new URL(raw);
  if(!['http:','https:'].includes(url.protocol)||url.username||url.password||!allowedHosts().has(url.host.toLowerCase()))throw new Error('Bağlantı sunucusu izinli değil. Kayıt noktası bölümündeki şirket rapor sunucularını kontrol edin.');
- controller=new AbortController();const timer=setTimeout(()=>controller?.abort(),90000);
+ controller=new AbortController();const timer=setTimeout(()=>controller?.abort(),report?300000:90000);
  try{
   const response=await fetch(url,{credentials:'include',redirect:'error',cache:'no-store',signal:controller.signal,targetAddressSpace:['127.0.0.1','localhost','[::1]'].includes(url.hostname)?'loopback':'local'});
   if(response.status===401||response.status===403)throw new Error('Şirket oturumu doğrulanamadı. Önce Formu aç bağlantısından şirket oturumunuzu açın.');
   if(!response.ok)throw new Error('Rapor sunucusu HTTP '+response.status+' yanıtı verdi.');
-  if(Number(response.headers.get('Content-Length'))>25*1024*1024)throw new Error('Excel dosyası 25 MB sınırını aştı.');
+  if(Number(response.headers.get('Content-Length'))>byteLimit)throw new Error('Excel dosyası '+sizeLabel+' sınırını aştı.');
   const reader=response.body.getReader();const chunks=[];let size=0;
-  while(true){const {done,value}=await reader.read();if(done)break;size+=value.length;if(size>25*1024*1024){await reader.cancel();throw new Error('Excel dosyası 25 MB sınırını aştı.');}chunks.push(value);}
+  while(true){const {done,value}=await reader.read();if(done)break;size+=value.length;if(size>byteLimit){await reader.cancel();throw new Error('Excel dosyası '+sizeLabel+' sınırını aştı.');}chunks.push(value);}
   return new Blob(chunks,{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
  }catch(error){
   if(error.name==='TypeError')throw new Error('Şirket sunucusuna ağ erişimi engellendi. Şirket ağı / VPN bağlantısını kontrol edin. BT ekibinin bu sayfa için CORS ve yerel ağ erişimi tanımlaması gerekebilir.');
-  if(error.name==='AbortError')throw new Error(stop?'İşlem durduruldu.':'Sunucu 90 saniyede yanıt vermedi. Tekrar deneyebilirsiniz.');
+  if(error.name==='AbortError')throw new Error(stop?'İşlem durduruldu.':(report?'Rapor sunucusu 5 dakikada yanıt vermedi.':'Sunucu 90 saniyede yanıt vermedi.')+' Tekrar deneyebilirsiniz.');
   throw error;
  }finally{clearTimeout(timer);controller=null;}
 }
 async function loadReport(data,label){
  if(busy)return;
- busy=true;controls();
+ busy=true;stop=false;controls();const readController=new AbortController();controller=readController;$('progress').removeAttribute('value');$('progressText').textContent='Rapor arka planda okunuyor…';
  try{
-  const parsed=await readReport(data,window.JSZip);
-  records=parsed;if(!$('hosts').value.trim()){$('hosts').value=[...new Set(records.filter(r=>r.url).map(r=>new URL(r.url).host))].join(', ');}if(folderHandle){folderKnown.clear();for(const rec of records){if(rec.key&&await folderRecord(folderHandle,rec.key))folderKnown.add(rec.key);}}selected=new Set();page=0;lastSource=label;$('onlyDownloaded').checked=false;
+  const parsed=await readReportOffThread(data,{signal:readController.signal,onProgress:p=>{$('progressText').textContent=p.text;if(p.phase==='rows'&&p.totalBytes)$('progress').value=Math.min(90,Math.round(p.bytes/p.totalBytes*90));if(p.phase==='links')$('progress').value=95;if(p.phase==='complete')$('progress').value=100;}});
+  const checked=folderHandle?await knownFolderKeys(folderHandle,parsed,{signal:readController.signal,onProgress:p=>{$('progressText').textContent=`Arşiv kontrol ediliyor · ${p.completed.toLocaleString('tr-TR')} / ${p.total.toLocaleString('tr-TR')} form`;}}):null;if(readController.signal.aborted)throw new DOMException('Rapor okuma durduruldu. Önceki liste korundu.','AbortError');
+  records=parsed;if(checked)folderKnown=checked;if(!$('hosts').value.trim()){$('hosts').value=[...new Set(records.filter(r=>r.url).map(r=>new URL(r.url).host))].join(', ');}selected=new Set();page=0;lastSource=label;$('onlyDownloaded').checked=false;
   for(const rec of records)if(rec.key&&rec.timestamp&&!known(rec.key))selected.add(rec.row);
   $('reportSummary').textContent=label+' · '+records.length+' Terminal aracı';
   $('fileName').value=label;
   if(!records.length)notice('Raporda Terminal departmanına ait araç bulunamadı.');
   else notice(`${records.length} araç yüklendi. ${records.filter(r=>r.url&&!r.timestamp).length} kayıtta geçerli tarih/saat yok; bu kayıtlar otomatik indirilmeyecek.`);
-  log(label+' yüklendi.');return true;
- }catch(error){notice(error.message||'Rapor okunamadı.',true);log('Rapor yüklenemedi: '+error.message,'error');return false;}
- finally{busy=false;render();}
+  $('progressText').textContent=records.length.toLocaleString('tr-TR')+' Terminal aracı yüklendi.';log(label+' yüklendi.');return true;
+ }catch(error){notice(error.message||'Rapor okunamadı.',error.name!=='AbortError');$('progressText').textContent=error.name==='AbortError'?'Rapor okuma durduruldu.':'Rapor yüklenemedi.';log('Rapor yüklenemedi: '+error.message,'error');return false;}
+ finally{busy=false;if(controller===readController)controller=null;if(!$('progress').hasAttribute('value'))$('progress').value=0;render();}
 }
-async function fileChosen(file){if(!file)return;if(!/\.xlsx$/i.test(file.name)||file.size>20*1024*1024){notice('En fazla 20 MB büyüklüğünde bir .xlsx raporu seçin.',true);return;}if(await loadReport(await file.arrayBuffer(),file.name))currentReportFile=file;}
+async function fileChosen(file){if(!file)return;if(!/\.xlsx$/i.test(file.name)||file.size>REPORT_LIMITS.fileBytes){notice('En fazla 512 MB büyüklüğünde bir .xlsx raporu seçin.',true);return;}if(await loadReport(await file.arrayBuffer(),file.name))currentReportFile=file;}
 function saveBlob(blob,name){const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=name;document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),60000);}
 async function saveStored(key){try{const stored=await getForm(key);if(!stored?.blob)throw new Error('Saklanan belge bulunamadı.');saveBlob(stored.blob,records.find(r=>r.key===key)?filename(records.find(r=>r.key===key)):stored.name);}catch(error){notice(error.message,true);}}
 async function chooseFolder(){
@@ -116,7 +120,7 @@ $('dropzone').addEventListener('dragleave',()=>$('dropzone').classList.remove('d
 $('dropzone').addEventListener('drop',event=>{event.preventDefault();$('dropzone').classList.remove('dragging');if(!busy)fileChosen(event.dataTransfer.files[0]);});
 $('loadUrl').addEventListener('click',async()=>{
  if(busy)return;
- try{busy=true;controls();const blob=await fetchExcel(transformUrl($('reportUrl').value));busy=false;if(await loadReport(await blob.arrayBuffer(),'Bağlantıdan alınan rapor'))currentReportFile=null;}
+ try{busy=true;stop=false;controls();$('progressText').textContent='Rapor bağlantısından dosya alınıyor…';const blob=await fetchExcel(transformUrl($('reportUrl').value),{report:true});busy=false;if(await loadReport(await blob.arrayBuffer(),'Bağlantıdan alınan rapor'))currentReportFile=null;}
  catch(error){notice(error.message,true);busy=false;controls();}
 });
 $('pickFolder').addEventListener('click',async()=>{try{await chooseFolder();}catch(error){if(error.name!=='AbortError')notice(error.message,true);}});

@@ -1,0 +1,1 @@
+{"name":"poliport-kontrolformu-web","private":true,"type":"module","scripts":{"test":"node --test tests/*.test.mjs","check":"node --check app.mjs && node --check core.mjs && node --check report-worker.js && node --check large-report.mjs"},"devDependencies":{"jszip":"3.10.1"}}

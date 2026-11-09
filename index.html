@@ -3,19 +3,20 @@
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="description" content="Poliport araç kontrol formlarını rapordan seçin, tekrar indirmeden arşivleyin.">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; connect-src http: https:; img-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; connect-src http: https:; worker-src 'self'; img-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'none'">
 <meta name="referrer" content="no-referrer">
 <title>Poliport | Kontrol Formu Arşivi</title>
-<link rel="stylesheet" href="styles.css?v=20261109-desktop1">
-<script src="jszip.min.js" defer></script><script type="module" src="app.mjs?v=20261109-desktop1"></script>
+<link rel="stylesheet" href="styles.css?v=20261109-large1">
+<script src="jszip.min.js" defer></script><script type="module" src="app.mjs?v=20261109-large1"></script>
 </head>
 <body>
-<header class="desktop-header"><h1>Poliport Kontrol Formu Arşivi</h1><span>WEB · v1.2</span></header>
+<header class="desktop-header"><h1>Poliport Kontrol Formu Arşivi</h1><span>WEB · v1.3</span></header>
 <main>
 <div id="notice" class="notice" role="status" aria-live="polite" hidden></div>
 <fieldset class="file-settings"><legend>Dosya Ayarları</legend>
 <div class="settings-row"><label for="fileName">Rapor Dosyası:</label><div id="dropzone" class="report-input"><input id="fileName" type="text" readonly placeholder="Araç Kayıt Sorgulama raporunu seçin (.xlsx)" aria-label="Seçilen rapor dosyası"><input id="reportFile" type="file" accept=".xlsx" hidden><button id="browseReport" class="browse">Gözat</button></div><button id="loadFile" class="load-button">Yükle ▶</button></div>
 <div class="settings-row"><label for="folderLabel">Kayıt Klasörü:</label><div class="report-input"><input id="folderLabel" type="text" readonly placeholder="Kontrol formlarının kaydedileceği klasörü seçin" aria-label="Seçilen kayıt klasörü"><button id="pickFolder" class="browse">Gözat</button></div><span></span></div>
+<p class="capacity-note">.xlsx · En fazla 512 MB · Aylık raporlar arka planda okunur. Okumayı Durdur düğmesiyle iptal edebilirsiniz.</p>
 <details class="web-options"><summary>Web seçenekleri ve bağlantı ayarları</summary><div class="extra-settings"><div class="tabs" role="tablist" aria-label="Rapor kaynağı"><button id="fileTab" role="tab" aria-selected="true" aria-controls="filePanel">Dosyadan yükle</button><button id="urlTab" role="tab" aria-selected="false" aria-controls="urlPanel">Bağlantıdan yükle</button></div><div id="filePanel" role="tabpanel"><p>Gözat düğmesinden seçtiğiniz .xlsx raporu otomatik yüklenir. Yeniden okumak için Yükle düğmesini kullanın.</p></div><div id="urlPanel" role="tabpanel" hidden><label for="reportUrl">Excel raporu bağlantısı</label><div class="inline-controls"><input id="reportUrl" type="url" placeholder="Doğrudan Excel raporu bağlantısı"><button id="loadUrl" class="load-button">Raporu Yükle</button></div></div><label for="hosts">Şirket rapor sunucuları</label><input id="hosts" spellcheck="false" placeholder="Rapor bağlantılarından otomatik alınır; gerekirse virgülle ayırın"><p id="folderHint">Formlar Kontrol Formları → Yıl → Ay → Gün klasörlerine ayrı Excel dosyaları olarak kaydedilir.</p><p>Aynı araç, aynı kayıt saati ve aynı form tekrar indirilmez. Farklı saatteki veya farklı formdaki ziyaretler ayrı işlenir.</p><div class="inline-controls"><button id="historyButton">İndirme Geçmişi <span id="historyCount">0</span></button><a href="https://shtseymen-eng.github.io/outlook-firma-rehberi/downloads.html">Masaüstü Programlarını İndir</a></div></div></details>
 </fieldset>
 <fieldset class="vehicle-list"><legend>Araç Listesi</legend><div class="toolbar"><button id="selectAll" disabled>☑ Tümünü Seç</button><button id="selectNone" disabled>☐ Seçimi Kaldır</button><button id="testOne" disabled>🔗 Test (1 Araç)</button><span id="reportSummary">Rapor bekleniyor…</span><span class="spacer"></span><label class="download-filter"><input id="onlyDownloaded" type="checkbox"> Yalnızca indirilenler</label><button id="download" class="download-button" disabled>⬇ Seçilenleri İndir</button><button id="stop" class="stop-button" hidden>Durdur</button></div>

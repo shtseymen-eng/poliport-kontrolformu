@@ -49,74 +49,9 @@ export function parseDate(value,numeric=false,date1904=false) {
   const pad=n=>String(n).padStart(2,'0');
   return {timestamp:`${y}-${pad(m)}-${pad(d)}T${pad(h)}:${pad(min)}:${pad(s)}`,display:`${pad(d)}.${pad(m)}.${y} ${pad(h)}:${pad(min)}:${pad(s)}`};
 }
-const elements=(node,name)=>Array.from(node.getElementsByTagNameNS('*',name));
-function xml(text) {
-  const doc=new DOMParser().parseFromString(text,'application/xml');
-  if(elements(doc,'parsererror').length) throw new Error('Excel içeriği okunamadı.');
-  return doc;
-}
-function zipPath(base,target) {
-  const parts=(target.startsWith('/')?target.slice(1):base+'/'+target).split('/'), result=[];
-  for(const p of parts) {if(p==='..') result.pop();else if(p&&p!=='.')result.push(p);}
-  return result.join('/');
-}
-async function entry(zip,path,required=true) {
-  const file=zip.file(path);
-  if(!file) {if(required)throw new Error('Geçerli bir .xlsx raporu seçin.'); return null;}
-  // Limit decompressed XML size to avoid accidental oversized reports.
-  if(file._data?.uncompressedSize>50*1024*1024)throw new Error('Excel sayfası çok büyük. Daha küçük bir rapor yükleyin.');
-  return xml(await file.async('string'));
-}
-export async function readReport(data,JSZip) {
-  const zip=await JSZip.loadAsync(data);
-  const workbook=await entry(zip,'xl/workbook.xml');
-  const rels=await entry(zip,'xl/_rels/workbook.xml.rels');
-  const sheets=elements(workbook,'sheet');
-  const view=elements(workbook,'workbookView')[0];
-  const sheet=sheets[Number(view?.getAttribute('activeTab')||0)]||sheets[0];
-  if(!sheet)throw new Error('Excel sayfası bulunamadı.');
-  const rel=elements(rels,'Relationship').find(r=>r.getAttribute('Id')===sheet.getAttribute('r:id'));
-  if(!rel)throw new Error('Excel sayfası bulunamadı.');
-  const path=zipPath('xl',rel.getAttribute('Target'));
-  const ws=await entry(zip,path);
-  const strings=await entry(zip,'xl/sharedStrings.xml',false);
-  const shared=strings?elements(strings,'si').map(si=>elements(si,'t').map(t=>t.textContent).join('')):[];
-  const parts=path.split('/');const name=parts.pop();const base=parts.join('/');
-  const linksDoc=await entry(zip,base+'/_rels/'+name+'.rels',false);
-  const linkMap=new Map(linksDoc?elements(linksDoc,'Relationship').map(r=>[r.getAttribute('Id'),r.getAttribute('Target')]):[]);
-  const links=new Map(elements(ws,'hyperlink').map(l=>[l.getAttribute('ref'),linkMap.get(l.getAttribute('r:id'))||'']));
-  const rows=elements(ws,'row').map(row=>{
-    const values=[];
-    for(const c of elements(row,'c')) {
-      const ref=c.getAttribute('r');const letters=ref.replace(/\d/g,'');let index=0;
-      for(const l of letters)index=index*26+l.charCodeAt(0)-64;
-      const type=c.getAttribute('t'),raw=elements(c,'v')[0]?.textContent||'';
-      const value=type==='s'?shared[Number(raw)]||'':type==='inlineStr'?elements(c,'t').map(t=>t.textContent).join(''):raw;
-      values[index-1]={value,ref,numeric:!type||type==='n',link:links.get(ref)||''};
-    }
-    return {number:Number(row.getAttribute('r')),values};
-  });
-  const headerIndex=rows.findIndex(row=>row.number<=20&&row.values.some(c=>c&&['kayıt no','plaka'].includes(norm(c.value))));
-  if(headerIndex<0)throw new Error('Başlık bulunamadı. Kayıt No veya Plaka sütunu gerekli.');
-  const header=rows[headerIndex].values;
-  function find(candidates,fallback) {
-    for(const candidate of candidates) {const exact=header.findIndex(c=>c&&norm(c.value)===norm(candidate));if(exact>=0)return exact;}
-    for(const candidate of candidates) {const partial=header.findIndex(c=>c&&norm(c.value).includes(norm(candidate)));if(partial>=0)return partial;}
-    return fallback;
-  }
-  const cols={tarih:find(['Kayıt Tarihi','Tarih'],1),departman:find(['Departman'],5),plaka:find(['Plaka','Çekici Plaka'],6),dorse:find(['Dorse Plaka','Dorse'],8),konteyner:find(['ISO Tank No','ISO Tank','Isotank No','Isotank','Konteyner No','Konteyner'],9),tip:find(['Araç Tipi','Araç Tip'],12),ad:find(['Sürücü Adı','Sürücü Ad'],14),soyad:find(['Sürücü Soyadı','Soyadı'],15),nakliyeci:find(['Nakliyeci'],16)};
-  const date1904=['1','true'].includes(elements(workbook,'workbookPr')[0]?.getAttribute('date1904'));
-  const records=[];
-  for(const row of rows.slice(headerIndex+1)) {
-    const get=key=>String(row.values[cols[key]]?.value??'').trim();
-    if(!norm(get('departman')).includes('terminal')||!get('plaka'))continue;
-    const dateCell=row.values[cols.tarih];const parsed=parseDate(dateCell?.value,dateCell?.numeric,date1904);
-    const rec=Object.fromEntries(Object.keys(cols).map(key=>[key,get(key)]));
-    rec.tarih=parsed.display;rec.timestamp=parsed.timestamp;rec.url=row.values[cols.plaka]?.link||'';
-    try{rec.key=rec.url?identity(rec):'';}catch{rec.url='';rec.key='';}
-    rec.row=row.number;records.push(rec);
-  }
-  return records;
+export async function readReport(data,JSZip,options={}) {
+  const {readReportLarge}=await import('./large-report.mjs?v=20261109-large1');
+  return readReportLarge(data,JSZip,options);
 }
 export async function validateExcel(bytes,JSZip) {
   const zip=await JSZip.loadAsync(bytes);

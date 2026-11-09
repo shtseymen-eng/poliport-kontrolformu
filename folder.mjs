@@ -22,3 +22,11 @@ export async function rememberFolder(root,form){
  try{await writer.write(JSON.stringify(metadata));await writer.close();}
  catch(error){try{await writer.abort();}catch{}throw error;}
 }
+// Check only distinct forms, without serial filesystem reads for every monthly-report row.
+export async function knownFolderKeys(root,records,{signal,onProgress=()=>{},read=folderRecord}={}){
+ const abort=()=>{if(signal?.aborted)throw new DOMException('Rapor okuma durduruldu. Önceki liste korundu.','AbortError');};
+ abort();try{await root.getDirectoryHandle('.poliport-kayitlar');}catch(error){if(error.name==='NotFoundError')return new Set();throw error;}abort();
+ const keys=[...new Set(records.map(r=>r.key).filter(Boolean))],found=new Set();let cursor=0,completed=0,failed=false;
+ async function scan(){try{while(cursor<keys.length&&!failed){abort();const key=keys[cursor++],saved=await read(root,key);abort();if(failed)return;if(saved)found.add(key);completed++;if(completed%100===0||completed===keys.length)onProgress({completed,total:keys.length});}}catch(error){failed=true;throw error;}}
+ await Promise.all(Array.from({length:Math.min(8,keys.length)},scan));abort();return found;
+}
