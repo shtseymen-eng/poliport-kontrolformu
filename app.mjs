@@ -6,12 +6,12 @@ const $=id=>document.getElementById(id);
 let folderKnown=new Set();
 let records=[],selected=new Set(),history=new Map(),folderHandle=null,page=0,busy=false,stop=false,controller=null;
 const PAGE_SIZE=100;
-let lastSource='';
+let lastSource='',currentReportFile=null;
 function notice(message,error=false){$('notice').textContent=message;$('notice').hidden=false;$('notice').classList.toggle('error',error);}
 function log(message,type=''){const p=document.createElement('p');p.textContent=new Date().toLocaleTimeString('tr-TR')+'  '+message;p.className=type;$('log').append(p);while($('log').children.length>100)$('log').firstChild.remove();$('log').scrollTop=$('log').scrollHeight;}
 function known(key){return folderHandle?folderKnown.has(key):history.has(key);}
 function status(record){return record.status||(known(record.key)?'Arşivde':!record.url?'Link yok':!record.timestamp?'Saat eksik':'Bekliyor');}
-function controls(){for(const id of ['selectAll','selectNone','testOne','download'])$(id).disabled=busy||!records.length;for(const id of ['reportFile','loadUrl','pickFolder','hosts','reportUrl','fileTab','urlTab'])$(id).disabled=busy;$('stop').hidden=!busy;}
+function controls(){for(const id of ['selectAll','selectNone','testOne','download'])$(id).disabled=busy||!records.length;for(const id of ['reportFile','browseReport','loadFile','loadUrl','pickFolder','hosts','reportUrl','fileTab','urlTab'])$(id).disabled=busy;$('stop').hidden=!busy;}
 function stats(){const unique=new Map(records.filter(r=>r.key&&r.timestamp).map(r=>[r.key,r]));$('total').textContent=records.length;$('newCount').textContent=[...unique.keys()].filter(k=>!known(k)).length;$('duplicateCount').textContent=records.filter(r=>r.key&&known(r.key)).length;$('selectedCount').textContent=selected.size;$('historyCount').textContent=history.size;}
 function render(){
  const query=norm($('search').value);const visible=records.filter(r=>(!$('onlyDownloaded').checked||known(r.key))&&(!query||norm([r.plaka,r.dorse,r.konteyner,r.ad,r.soyad,r.nakliyeci].join(' ')).includes(query)));
@@ -20,12 +20,12 @@ function render(){
  $('pageInfo').textContent=`${page+1} / ${pages} · ${visible.length} araç`;$('prev').disabled=page===0;$('next').disabled=page===pages-1;
  for(const rec of visible.slice(page*PAGE_SIZE,(page+1)*PAGE_SIZE)){
   const tr=document.createElement('tr');tr.className=known(rec.key)||['Kaydedildi','Arşivlendi'].includes(rec.status)?'downloaded':'pending';const td=document.createElement('td'),checkbox=document.createElement('input');checkbox.type='checkbox';checkbox.checked=selected.has(rec.row);checkbox.disabled=busy||!rec.url||!rec.timestamp||known(rec.key);checkbox.setAttribute('aria-label',rec.plaka+' aracını seç');checkbox.addEventListener('change',()=>{if(checkbox.checked)selected.add(rec.row);else selected.delete(rec.row);stats();});td.append(checkbox);tr.append(td);
-  for(const value of [rec.tarih,rec.plaka,rec.dorse,rec.konteyner,rec.tip,[rec.ad,rec.soyad].join(' '),rec.nakliyeci]){const cell=document.createElement('td');cell.textContent=value||'—';tr.append(cell);}
+  for(const value of [rec.tarih,rec.plaka,rec.dorse,rec.konteyner,rec.tip,rec.ad,rec.soyad,rec.nakliyeci]){const cell=document.createElement('td');cell.textContent=value||'—';tr.append(cell);}
   const state=status(rec),cell=document.createElement('td'),badge=document.createElement('span');badge.textContent=state;badge.className='badge'+(['Arşivlendi','Kaydedildi','Arşivde'].includes(state)?' ok':state==='Atlandı'?' skip':state==='Hata'?' error':'');cell.append(badge);tr.append(cell);
-  const action=document.createElement('td');
+  const action=document.createElement('span');action.className='form-action';
   if(known(rec.key)){const btn=document.createElement('button');btn.textContent='Kopyayı indir';btn.className='text-button small';btn.disabled=busy;btn.addEventListener('click',()=>saveStored(rec.key));action.append(btn);}
   else if(rec.url){const a=document.createElement('a');a.textContent='Formu aç ↗';a.className='link';a.href=transformUrl(rec.url);a.target='_blank';a.rel='noopener noreferrer';action.append(a);}
-  tr.append(action);$('vehicles').append(tr);
+  cell.append(action);$('vehicles').append(tr);
  }
  stats();controls();
 }
@@ -56,14 +56,14 @@ async function loadReport(data,label){
   records=parsed;if(!$('hosts').value.trim()){$('hosts').value=[...new Set(records.filter(r=>r.url).map(r=>new URL(r.url).host))].join(', ');}if(folderHandle){folderKnown.clear();for(const rec of records){if(rec.key&&await folderRecord(folderHandle,rec.key))folderKnown.add(rec.key);}}selected=new Set();page=0;lastSource=label;$('onlyDownloaded').checked=false;
   for(const rec of records)if(rec.key&&rec.timestamp&&!known(rec.key))selected.add(rec.row);
   $('reportSummary').textContent=label+' · '+records.length+' Terminal aracı';
-  $('fileName').textContent=label;
+  $('fileName').value=label;
   if(!records.length)notice('Raporda Terminal departmanına ait araç bulunamadı.');
   else notice(`${records.length} araç yüklendi. ${records.filter(r=>r.url&&!r.timestamp).length} kayıtta geçerli tarih/saat yok; bu kayıtlar otomatik indirilmeyecek.`);
-  log(label+' yüklendi.');
- }catch(error){notice(error.message||'Rapor okunamadı.',true);log('Rapor yüklenemedi: '+error.message,'error');}
+  log(label+' yüklendi.');return true;
+ }catch(error){notice(error.message||'Rapor okunamadı.',true);log('Rapor yüklenemedi: '+error.message,'error');return false;}
  finally{busy=false;render();}
 }
-async function fileChosen(file){if(!file)return;if(!/\.xlsx$/i.test(file.name)||file.size>20*1024*1024){notice('En fazla 20 MB büyüklüğünde bir .xlsx raporu seçin.',true);return;}await loadReport(await file.arrayBuffer(),file.name);}
+async function fileChosen(file){if(!file)return;if(!/\.xlsx$/i.test(file.name)||file.size>20*1024*1024){notice('En fazla 20 MB büyüklüğünde bir .xlsx raporu seçin.',true);return;}if(await loadReport(await file.arrayBuffer(),file.name))currentReportFile=file;}
 function saveBlob(blob,name){const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=name;document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),60000);}
 async function saveStored(key){try{const stored=await getForm(key);if(!stored?.blob)throw new Error('Saklanan belge bulunamadı.');saveBlob(stored.blob,records.find(r=>r.key===key)?filename(records.find(r=>r.key===key)):stored.name);}catch(error){notice(error.message,true);}}
 async function chooseFolder(){
@@ -71,7 +71,7 @@ async function chooseFolder(){
  const chosen=await window.showDirectoryPicker({mode:'readwrite',id:'poliport-arsiv'});
  folderHandle=chosen;folderKnown.clear();
  for(const rec of records){if(rec.key){const saved=await folderRecord(folderHandle,rec.key);rec.status='';if(saved){folderKnown.add(rec.key);history.set(rec.key,saved);selected.delete(rec.row);}else if(rec.timestamp)selected.add(rec.row);}}
- $('folderLabel').textContent=folderHandle.name;
+ $('folderLabel').value=folderHandle.name;
  $('folderHint').textContent='Her kontrol formu ayrı .xlsx dosyası olarak yıl / ay / gün klasörüne kaydedilir.';
  render();
 }
@@ -108,13 +108,15 @@ async function download(test=false){
 }
 $('fileTab').addEventListener('click',()=>switchTab(false));$('urlTab').addEventListener('click',()=>switchTab(true));
 function switchTab(url){$('fileTab').setAttribute('aria-selected',String(!url));$('urlTab').setAttribute('aria-selected',String(url));$('filePanel').hidden=url;$('urlPanel').hidden=!url;}
+$('browseReport').addEventListener('click',()=>$('reportFile').click());
+$('loadFile').addEventListener('click',()=>{if(currentReportFile)fileChosen(currentReportFile);else if(lastSource==='Bağlantıdan alınan rapor'&&$('reportUrl').value)$('loadUrl').click();else $('reportFile').click();});
 $('reportFile').addEventListener('change',event=>fileChosen(event.target.files[0]));
 $('dropzone').addEventListener('dragover',event=>{event.preventDefault();$('dropzone').classList.add('dragging');});
 $('dropzone').addEventListener('dragleave',()=>$('dropzone').classList.remove('dragging'));
 $('dropzone').addEventListener('drop',event=>{event.preventDefault();$('dropzone').classList.remove('dragging');if(!busy)fileChosen(event.dataTransfer.files[0]);});
 $('loadUrl').addEventListener('click',async()=>{
  if(busy)return;
- try{busy=true;controls();const blob=await fetchExcel(transformUrl($('reportUrl').value));busy=false;await loadReport(await blob.arrayBuffer(),'Bağlantıdan alınan rapor');}
+ try{busy=true;controls();const blob=await fetchExcel(transformUrl($('reportUrl').value));busy=false;if(await loadReport(await blob.arrayBuffer(),'Bağlantıdan alınan rapor'))currentReportFile=null;}
  catch(error){notice(error.message,true);busy=false;controls();}
 });
 $('pickFolder').addEventListener('click',async()=>{try{await chooseFolder();}catch(error){if(error.name!=='AbortError')notice(error.message,true);}});
