@@ -55,7 +55,7 @@ async function loadReport(data,label){
  if(busy)return;
  busy=true;stop=false;controls();const readController=new AbortController();controller=readController;$('progress').removeAttribute('value');$('progressText').textContent='Rapor arka planda okunuyor…';
  try{
-  const parsed=await readReportOffThread(data,{signal:readController.signal,onProgress:p=>{$('progressText').textContent=p.text;if(p.phase==='rows'&&p.totalBytes)$('progress').value=Math.min(90,Math.round(p.bytes/p.totalBytes*90));if(p.phase==='links')$('progress').value=95;if(p.phase==='complete')$('progress').value=100;}});
+  const parsed=await readReportOffThread(await data,{signal:readController.signal,onProgress:p=>{$('progressText').textContent=p.text;if(p.phase==='rows'&&p.totalBytes)$('progress').value=Math.min(90,Math.round(p.bytes/p.totalBytes*90));if(p.phase==='links')$('progress').value=95;if(p.phase==='complete')$('progress').value=100;}});
   const checked=folderHandle?await knownFolderKeys(folderHandle,parsed,{signal:readController.signal,onProgress:p=>{$('progressText').textContent=`Arşiv kontrol ediliyor · ${p.completed.toLocaleString('tr-TR')} / ${p.total.toLocaleString('tr-TR')} form`;}}):null;if(readController.signal.aborted)throw new DOMException('Rapor okuma durduruldu. Önceki liste korundu.','AbortError');
   records=parsed;if(checked)folderKnown=checked;if(!$('hosts').value.trim()){$('hosts').value=[...new Set(records.filter(r=>r.url).map(r=>new URL(r.url).host))].join(', ');}selected=new Set();page=0;lastSource=label;$('onlyDownloaded').checked=false;
   for(const rec of records)if(rec.key&&rec.timestamp&&!known(rec.key))selected.add(rec.row);
@@ -67,7 +67,7 @@ async function loadReport(data,label){
  }catch(error){notice(error.message||'Rapor okunamadı.',error.name!=='AbortError');$('progressText').textContent=error.name==='AbortError'?'Rapor okuma durduruldu.':'Rapor yüklenemedi.';log('Rapor yüklenemedi: '+error.message,'error');return false;}
  finally{busy=false;if(controller===readController)controller=null;if(!$('progress').hasAttribute('value'))$('progress').value=0;render();}
 }
-async function fileChosen(file){if(!file)return;if(!/\.xlsx$/i.test(file.name)||file.size>REPORT_LIMITS.fileBytes){notice('En fazla 512 MB büyüklüğünde bir .xlsx raporu seçin.',true);return;}if(await loadReport(await file.arrayBuffer(),file.name))currentReportFile=file;}
+async function fileChosen(file){if(!file||busy)return;if(!/\.xlsx$/i.test(file.name)||file.size>REPORT_LIMITS.fileBytes){notice('En fazla 512 MB büyüklüğünde bir .xlsx raporu seçin.',true);return;}if(await loadReport(file.arrayBuffer(),file.name))currentReportFile=file;}
 function saveBlob(blob,name){const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=name;document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),60000);}
 async function saveStored(key){try{const stored=await getForm(key);if(!stored?.blob)throw new Error('Saklanan belge bulunamadı.');saveBlob(stored.blob,records.find(r=>r.key===key)?filename(records.find(r=>r.key===key)):stored.name);}catch(error){notice(error.message,true);}}
 async function chooseFolder(){
@@ -120,14 +120,14 @@ $('dropzone').addEventListener('dragleave',()=>$('dropzone').classList.remove('d
 $('dropzone').addEventListener('drop',event=>{event.preventDefault();$('dropzone').classList.remove('dragging');if(!busy)fileChosen(event.dataTransfer.files[0]);});
 $('loadUrl').addEventListener('click',async()=>{
  if(busy)return;
- try{busy=true;stop=false;controls();$('progressText').textContent='Rapor bağlantısından dosya alınıyor…';const blob=await fetchExcel(transformUrl($('reportUrl').value),{report:true});busy=false;if(await loadReport(await blob.arrayBuffer(),'Bağlantıdan alınan rapor'))currentReportFile=null;}
+ try{busy=true;stop=false;controls();$('progressText').textContent='Rapor bağlantısından dosya alınıyor…';const blob=await fetchExcel(transformUrl($('reportUrl').value),{report:true});busy=false;if(await loadReport(blob.arrayBuffer(),'Bağlantıdan alınan rapor'))currentReportFile=null;}
  catch(error){notice(error.message,true);busy=false;controls();}
 });
 $('pickFolder').addEventListener('click',async()=>{try{await chooseFolder();}catch(error){if(error.name!=='AbortError')notice(error.message,true);}});
 $('selectAll').addEventListener('click',()=>{$('onlyDownloaded').checked=false;selected=new Set(records.filter(r=>r.key&&r.timestamp&&!known(r.key)).map(r=>r.row));render();});
 $('selectNone').addEventListener('click',()=>{selected.clear();render();});
 $('download').addEventListener('click',()=>download());$('testOne').addEventListener('click',()=>download(true));
-$('stop').addEventListener('click',()=>{stop=true;controller?.abort();});
+$('stop').addEventListener('click',()=>{stop=true;controller?.abort();$('progressText').textContent='İşlem durduruluyor…';});
 $('search').addEventListener('input',()=>{page=0;render();});
 $('prev').addEventListener('click',()=>{page--;render();});$('next').addEventListener('click',()=>{page++;render();});
 $('onlyDownloaded').addEventListener('change',()=>{page=0;render();});
